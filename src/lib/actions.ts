@@ -12,6 +12,13 @@ import { eq, sql, and, gte, lte, desc, like, or } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { getRangoPeriodo, type Periodo } from "@/lib/utils";
 import { getCurrentUserLabel } from "@/lib/supabase/server";
+import { requireOperador } from "@/lib/auth";
+import { computeStockPorProducto } from "@/lib/stock";
+
+async function getEstacionId() {
+  const ctx = await requireOperador();
+  return ctx.estacionId;
+}
 
 export async function getProductos() {
   const db = await getDb();
@@ -20,38 +27,59 @@ export async function getProductos() {
 
 export async function getInstituciones(search?: string) {
   const db = await getDb();
+  const estacionId = await getEstacionId();
+  const base = eq(instituciones.estacionId, estacionId);
+
   if (search) {
     return db
       .select()
       .from(instituciones)
-      .where(like(instituciones.nombre, `%${search}%`));
+      .where(and(base, like(instituciones.nombre, `%${search}%`)));
   }
-  return db.select().from(instituciones).orderBy(instituciones.nombre);
+  return db
+    .select()
+    .from(instituciones)
+    .where(base)
+    .orderBy(instituciones.nombre);
 }
 
 export async function getInstitucionById(id: number) {
   const db = await getDb();
+  const estacionId = await getEstacionId();
   const [row] = await db
     .select()
     .from(instituciones)
-    .where(eq(instituciones.id, id))
+    .where(and(eq(instituciones.id, id), eq(instituciones.estacionId, estacionId)))
     .limit(1);
   return row ?? null;
 }
 
 export async function getPersonaById(id: number) {
   const db = await getDb();
+  const estacionId = await getEstacionId();
   const [row] = await db
     .select()
     .from(personas)
-    .where(eq(personas.id, id))
+    .where(and(eq(personas.id, id), eq(personas.estacionId, estacionId)))
     .limit(1);
   return row ?? null;
 }
 
 export async function getPersonas(search?: string) {
   const db = await getDb();
-  const query = db
+  const estacionId = await getEstacionId();
+
+  const conditions = [eq(personas.estacionId, estacionId)];
+  if (search) {
+    conditions.push(
+      or(
+        like(personas.nombreCompleto, `%${search}%`),
+        like(personas.documentoIdentidad, `%${search}%`)
+      )!
+    );
+  }
+
+  return db
     .select({
       id: personas.id,
       nombreCompleto: personas.nombreCompleto,
@@ -63,47 +91,13 @@ export async function getPersonas(search?: string) {
       institucionNombre: instituciones.nombre,
     })
     .from(personas)
-    .leftJoin(instituciones, eq(personas.institucionId, instituciones.id));
-
-  if (search) {
-    return query.where(
-      or(
-        like(personas.nombreCompleto, `%${search}%`),
-        like(personas.documentoIdentidad, `%${search}%`)
-      )
-    );
-  }
-  return query;
+    .leftJoin(instituciones, eq(personas.institucionId, instituciones.id))
+    .where(and(...conditions));
 }
 
-export async function getStockPorProducto() {
-  const db = await getDb();
-  const allProductos = await getProductos();
-  const result = [];
-
-  for (const producto of allProductos) {
-    const [entradasSum] = await db
-      .select({ total: sql<number>`COALESCE(SUM(${entradas.litros}), 0)` })
-      .from(entradas)
-      .where(eq(entradas.productoId, producto.id));
-
-    const [despachosSum] = await db
-      .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
-      .from(despachos)
-      .where(eq(despachos.productoId, producto.id));
-
-    const totalEntradas = Number(entradasSum?.total ?? 0);
-    const totalDespachos = Number(despachosSum?.total ?? 0);
-
-    result.push({
-      producto,
-      totalEntradas,
-      totalDespachos,
-      disponible: totalEntradas - totalDespachos,
-    });
-  }
-
-  return result;
+export async function getStockPorProducto(estacionId?: number) {
+  const eid = estacionId ?? (await getEstacionId());
+  return computeStockPorProducto(eid);
 }
 
 function filtroFecha(
@@ -122,23 +116,26 @@ function filtroFecha(
 
 export async function getDashboardStats(periodo: Periodo = "mes") {
   const db = await getDb();
+  const estacionId = await getEstacionId();
   const rango = getRangoPeriodo(periodo);
   const desde = rango?.desde;
   const hasta = rango?.hasta;
 
-  const stock = await getStockPorProducto();
+  const stock = await getStockPorProducto(estacionId);
+  const estacionFilter = eq(entradas.estacionId, estacionId);
+  const despEstacionFilter = eq(despachos.estacionId, estacionId);
   const entradasFiltro = filtroFecha(entradas.fecha, desde, hasta);
   const despachosFiltro = filtroFecha(despachos.fechaHora, desde, hasta);
 
   const [totalEntradas] = await db
     .select({ total: sql<number>`COALESCE(SUM(${entradas.litros}), 0)` })
     .from(entradas)
-    .where(entradasFiltro);
+    .where(and(estacionFilter, entradasFiltro ?? sql`true`));
 
   const [totalDespachos] = await db
     .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
     .from(despachos)
-    .where(despachosFiltro);
+    .where(and(despEstacionFilter, despachosFiltro ?? sql`true`));
 
   const topInstituciones = await db
     .select({
@@ -147,7 +144,7 @@ export async function getDashboardStats(periodo: Periodo = "mes") {
     })
     .from(despachos)
     .innerJoin(instituciones, eq(despachos.institucionId, instituciones.id))
-    .where(despachosFiltro)
+    .where(and(despEstacionFilter, despachosFiltro ?? sql`true`))
     .groupBy(instituciones.id, instituciones.nombre)
     .orderBy(desc(sql`SUM(${despachos.litros})`))
     .limit(5);
@@ -159,7 +156,7 @@ export async function getDashboardStats(periodo: Periodo = "mes") {
     })
     .from(despachos)
     .innerJoin(personas, eq(despachos.personaId, personas.id))
-    .where(despachosFiltro)
+    .where(and(despEstacionFilter, despachosFiltro ?? sql`true`))
     .groupBy(personas.id, personas.nombreCompleto)
     .orderBy(desc(sql`SUM(${despachos.litros})`))
     .limit(5);
@@ -183,6 +180,7 @@ export async function getHistorial(filtros?: {
   productoId?: number;
 }) {
   const db = await getDb();
+  const estacionId = await getEstacionId();
   const movimientos: Array<{
     id: number;
     fecha: string;
@@ -194,7 +192,7 @@ export async function getHistorial(filtros?: {
   }> = [];
 
   if (!filtros?.tipo || filtros.tipo === "entrada" || filtros.tipo === "todos") {
-    const condiciones = [];
+    const condiciones = [eq(entradas.estacionId, estacionId)];
     if (filtros?.desde) condiciones.push(gte(entradas.fecha, filtros.desde));
     if (filtros?.hasta) condiciones.push(lte(entradas.fecha, filtros.hasta));
     if (filtros?.productoId)
@@ -210,7 +208,7 @@ export async function getHistorial(filtros?: {
       })
       .from(entradas)
       .innerJoin(productos, eq(entradas.productoId, productos.id))
-      .where(condiciones.length > 0 ? and(...condiciones) : undefined);
+      .where(and(...condiciones));
 
     for (const row of rows) {
       movimientos.push({
@@ -226,7 +224,7 @@ export async function getHistorial(filtros?: {
   }
 
   if (!filtros?.tipo || filtros.tipo === "despacho" || filtros.tipo === "todos") {
-    const condiciones = [];
+    const condiciones = [eq(despachos.estacionId, estacionId)];
     if (filtros?.desde) condiciones.push(gte(despachos.fechaHora, filtros.desde));
     if (filtros?.hasta)
       condiciones.push(lte(despachos.fechaHora, `${filtros.hasta}T23:59:59`));
@@ -248,7 +246,7 @@ export async function getHistorial(filtros?: {
       .innerJoin(productos, eq(despachos.productoId, productos.id))
       .leftJoin(personas, eq(despachos.personaId, personas.id))
       .leftJoin(instituciones, eq(despachos.institucionId, instituciones.id))
-      .where(condiciones.length > 0 ? and(...condiciones) : undefined);
+      .where(and(...condiciones));
 
     for (const row of rows) {
       movimientos.push({
@@ -273,7 +271,8 @@ export async function getHistorial(filtros?: {
 
 export async function getReporteResumen(desde?: string, hasta?: string) {
   const db = await getDb();
-  const stock = await getStockPorProducto();
+  const estacionId = await getEstacionId();
+  const stock = await getStockPorProducto(estacionId);
   const entradasFiltro = filtroFecha(entradas.fecha, desde, hasta);
   const despachosFiltro = filtroFecha(despachos.fechaHora, desde, hasta);
 
@@ -283,14 +282,22 @@ export async function getReporteResumen(desde?: string, hasta?: string) {
       .select({ total: sql<number>`COALESCE(SUM(${entradas.litros}), 0)` })
       .from(entradas)
       .where(
-        and(eq(entradas.productoId, item.producto.id), entradasFiltro ?? sql`true`)
+        and(
+          eq(entradas.productoId, item.producto.id),
+          eq(entradas.estacionId, estacionId),
+          entradasFiltro ?? sql`true`
+        )
       );
 
     const [des] = await db
       .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
       .from(despachos)
       .where(
-        and(eq(despachos.productoId, item.producto.id), despachosFiltro ?? sql`true`)
+        and(
+          eq(despachos.productoId, item.producto.id),
+          eq(despachos.estacionId, estacionId),
+          despachosFiltro ?? sql`true`
+        )
       );
 
     resumen.push({
@@ -303,7 +310,8 @@ export async function getReporteResumen(desde?: string, hasta?: string) {
 
   const instList = await db
     .select({ id: instituciones.id, nombre: instituciones.nombre })
-    .from(instituciones);
+    .from(instituciones)
+    .where(eq(instituciones.estacionId, estacionId));
 
   const consumoPorInstitucion = [];
 
@@ -312,7 +320,11 @@ export async function getReporteResumen(desde?: string, hasta?: string) {
       .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
       .from(despachos)
       .where(
-        and(eq(despachos.institucionId, inst.id), despachosFiltro ?? sql`true`)
+        and(
+          eq(despachos.institucionId, inst.id),
+          eq(despachos.estacionId, estacionId),
+          despachosFiltro ?? sql`true`
+        )
       );
 
     const [viaPersonas] = await db
@@ -322,6 +334,7 @@ export async function getReporteResumen(desde?: string, hasta?: string) {
       .where(
         and(
           eq(personas.institucionId, inst.id),
+          eq(despachos.estacionId, estacionId),
           eq(despachos.tipoBeneficiario, "persona"),
           despachosFiltro ?? sql`true`
         )
@@ -357,9 +370,11 @@ export async function createEntrada(data: {
   if (data.litros <= 0) return { error: "Los litros deben ser mayor a 0" };
 
   const db = await getDb();
+  const estacionId = await getEstacionId();
   const usuario = await getCurrentUserLabel();
 
   await db.insert(entradas).values({
+    estacionId,
     fecha: data.fecha,
     productoId: data.productoId,
     litros: data.litros,
@@ -373,6 +388,7 @@ export async function createEntrada(data: {
   revalidatePath("/entradas");
   revalidatePath("/historial");
   revalidatePath("/reportes");
+  revalidatePath("/admin");
   return { success: true };
 }
 
@@ -394,7 +410,8 @@ export async function createDespacho(data: {
     return { error: "Debe seleccionar una institución" };
   }
 
-  const stock = await getStockPorProducto();
+  const estacionId = await getEstacionId();
+  const stock = await getStockPorProducto(estacionId);
   const productoStock = stock.find((s) => s.producto.id === data.productoId);
   if (!productoStock || data.litros > productoStock.disponible) {
     return {
@@ -406,6 +423,7 @@ export async function createDespacho(data: {
   const usuario = await getCurrentUserLabel();
 
   await db.insert(despachos).values({
+    estacionId,
     fechaHora: data.fechaHora,
     productoId: data.productoId,
     litros: data.litros,
@@ -420,6 +438,7 @@ export async function createDespacho(data: {
   revalidatePath("/despachos");
   revalidatePath("/historial");
   revalidatePath("/reportes");
+  revalidatePath("/admin");
   return { success: true };
 }
 
@@ -431,7 +450,10 @@ export async function createInstitucion(data: {
   if (!data.nombre.trim()) return { error: "El nombre es obligatorio" };
 
   const db = await getDb();
+  const estacionId = await getEstacionId();
+
   await db.insert(instituciones).values({
+    estacionId,
     nombre: data.nombre.trim(),
     tipo: data.tipo || null,
     direccion: data.direccion || null,
@@ -451,6 +473,8 @@ export async function updateInstitucion(
   if (!data.nombre.trim()) return { error: "El nombre es obligatorio" };
 
   const db = await getDb();
+  const estacionId = await getEstacionId();
+
   await db
     .update(instituciones)
     .set({
@@ -458,7 +482,7 @@ export async function updateInstitucion(
       tipo: data.tipo || null,
       direccion: data.direccion || null,
     })
-    .where(eq(instituciones.id, id));
+    .where(and(eq(instituciones.id, id), eq(instituciones.estacionId, estacionId)));
 
   revalidatePath("/instituciones");
   revalidatePath("/personas");
@@ -476,7 +500,13 @@ export async function createPersona(data: {
   if (!data.documentoIdentidad.trim()) return { error: "El documento es obligatorio" };
 
   const db = await getDb();
+  const estacionId = await getEstacionId();
+
+  const inst = await getInstitucionById(data.institucionId);
+  if (!inst) return { error: "Institución no válida" };
+
   await db.insert(personas).values({
+    estacionId,
     nombreCompleto: data.nombreCompleto.trim(),
     documentoIdentidad: data.documentoIdentidad.trim(),
     institucionId: data.institucionId,
@@ -503,6 +533,11 @@ export async function updatePersona(
   if (!data.nombreCompleto.trim()) return { error: "El nombre es obligatorio" };
 
   const db = await getDb();
+  const estacionId = await getEstacionId();
+
+  const inst = await getInstitucionById(data.institucionId);
+  if (!inst) return { error: "Institución no válida" };
+
   await db
     .update(personas)
     .set({
@@ -512,7 +547,7 @@ export async function updatePersona(
       telefono: data.telefono || null,
       email: data.email || null,
     })
-    .where(eq(personas.id, id));
+    .where(and(eq(personas.id, id), eq(personas.estacionId, estacionId)));
 
   revalidatePath("/personas");
   revalidatePath("/despachos");
@@ -521,10 +556,12 @@ export async function updatePersona(
 
 export async function getInstitucionDetalle(id: number) {
   const db = await getDb();
+  const estacionId = await getEstacionId();
+
   const [inst] = await db
     .select()
     .from(instituciones)
-    .where(eq(instituciones.id, id))
+    .where(and(eq(instituciones.id, id), eq(instituciones.estacionId, estacionId)))
     .limit(1);
 
   if (!inst) return null;
@@ -532,18 +569,18 @@ export async function getInstitucionDetalle(id: number) {
   const [directo] = await db
     .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
     .from(despachos)
-    .where(eq(despachos.institucionId, id));
+    .where(and(eq(despachos.institucionId, id), eq(despachos.estacionId, estacionId)));
 
   const [viaPersonas] = await db
     .select({ total: sql<number>`COALESCE(SUM(${despachos.litros}), 0)` })
     .from(despachos)
     .innerJoin(personas, eq(despachos.personaId, personas.id))
-    .where(eq(personas.institucionId, id));
+    .where(and(eq(personas.institucionId, id), eq(despachos.estacionId, estacionId)));
 
   const personasInst = await db
     .select()
     .from(personas)
-    .where(eq(personas.institucionId, id));
+    .where(and(eq(personas.institucionId, id), eq(personas.estacionId, estacionId)));
 
   const d = Number(directo?.total ?? 0);
   const v = Number(viaPersonas?.total ?? 0);

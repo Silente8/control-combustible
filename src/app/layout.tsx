@@ -1,9 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ZODI_ORGANIZATION, APP_TITLE } from "@/lib/branding";
 
 export const metadata: Metadata = {
-  title: "Control Combustible ZODI YARACUY",
-  description: "Sistema de control de combustible para estación de gasolina",
+  title: `${APP_TITLE} — ${ZODI_ORGANIZATION}`,
+  description: "Sistema de control de combustible multi-estación",
 };
 
 export const viewport: Viewport = {

@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { getDashboardStats } from "@/lib/actions";
+import { requireOperador } from "@/lib/auth";
 import { StatCard } from "@/components/StatCard";
 import { PageHeader } from "@/components/PageHeader";
 import { formatLitros } from "@/lib/utils";
 import { ArrowDownToLine, ArrowUpFromLine } from "lucide-react";
 
 export default async function DashboardPage() {
+  const ctx = await requireOperador();
   const stats = await getDashboardStats("mes");
 
   const gasolina = stats.stock.find((s) => s.producto.nombre === "Gasolina");
@@ -15,10 +17,10 @@ export default async function DashboardPage() {
     <div>
       <PageHeader
         title="Panel de Control"
-        description="Resumen de combustible — mes actual"
+        description={`Estación ${ctx.estacionNombre} — resumen del mes actual`}
       />
 
-      <div className="mb-8 grid grid-cols-2 gap-3 landscape:grid-cols-4 lg:grid-cols-4 lg:gap-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 landscape:grid-cols-4 lg:gap-4">
         <StatCard
           title="Gasolina disponible"
           value={gasolina?.disponible ?? 0}
@@ -41,13 +43,19 @@ export default async function DashboardPage() {
         />
       </div>
 
-      <div className="mb-8 flex gap-4">
-        <Link href="/entradas/nueva" className="btn-success flex-1 py-3">
-          <ArrowDownToLine className="h-5 w-5" />
+      <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:gap-4">
+        <Link
+          href="/entradas/nueva"
+          className="btn-success flex-1 py-4 text-base font-semibold landscape:py-3"
+        >
+          <ArrowDownToLine className="h-6 w-6" />
           Registrar Entrada
         </Link>
-        <Link href="/despachos/nuevo" className="btn-warning flex-1 py-3">
-          <ArrowUpFromLine className="h-5 w-5" />
+        <Link
+          href="/despachos/nuevo"
+          className="btn-warning flex-1 py-4 text-base font-semibold landscape:py-3"
+        >
+          <ArrowUpFromLine className="h-6 w-6" />
           Registrar Despacho
         </Link>
       </div>

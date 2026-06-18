@@ -1,4 +1,18 @@
--- Ejecutar en Supabase → SQL Editor → New query → Run
+-- Esquema completo multi-estación — ZODI N°46 Yaracuy
+-- Ejecutar en Supabase → SQL Editor (proyecto nuevo)
+
+CREATE TABLE IF NOT EXISTS estaciones (
+  id SERIAL PRIMARY KEY,
+  nombre TEXT NOT NULL,
+  activa INTEGER NOT NULL DEFAULT 1
+);
+
+CREATE TABLE IF NOT EXISTS perfiles_usuario (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL UNIQUE,
+  rol TEXT NOT NULL CHECK (rol IN ('operador', 'admin')),
+  estacion_id INTEGER REFERENCES estaciones(id)
+);
 
 CREATE TABLE IF NOT EXISTS productos (
   id SERIAL PRIMARY KEY,
@@ -8,6 +22,7 @@ CREATE TABLE IF NOT EXISTS productos (
 
 CREATE TABLE IF NOT EXISTS instituciones (
   id SERIAL PRIMARY KEY,
+  estacion_id INTEGER NOT NULL REFERENCES estaciones(id),
   nombre TEXT NOT NULL,
   tipo TEXT,
   direccion TEXT,
@@ -16,6 +31,7 @@ CREATE TABLE IF NOT EXISTS instituciones (
 
 CREATE TABLE IF NOT EXISTS personas (
   id SERIAL PRIMARY KEY,
+  estacion_id INTEGER NOT NULL REFERENCES estaciones(id),
   nombre_completo TEXT NOT NULL,
   documento_identidad TEXT NOT NULL,
   telefono TEXT,
@@ -26,6 +42,7 @@ CREATE TABLE IF NOT EXISTS personas (
 
 CREATE TABLE IF NOT EXISTS entradas (
   id SERIAL PRIMARY KEY,
+  estacion_id INTEGER NOT NULL REFERENCES estaciones(id),
   fecha TEXT NOT NULL,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   litros DOUBLE PRECISION NOT NULL,
@@ -37,6 +54,7 @@ CREATE TABLE IF NOT EXISTS entradas (
 
 CREATE TABLE IF NOT EXISTS despachos (
   id SERIAL PRIMARY KEY,
+  estacion_id INTEGER NOT NULL REFERENCES estaciones(id),
   fecha_hora TEXT NOT NULL,
   producto_id INTEGER NOT NULL REFERENCES productos(id),
   litros DOUBLE PRECISION NOT NULL,
@@ -47,32 +65,41 @@ CREATE TABLE IF NOT EXISTS despachos (
   observaciones TEXT
 );
 
--- Datos iniciales (solo si las tablas están vacías)
+-- Estaciones
+INSERT INTO estaciones (nombre)
+SELECT 'Las Delicias' WHERE NOT EXISTS (SELECT 1 FROM estaciones WHERE nombre = 'Las Delicias');
+INSERT INTO estaciones (nombre)
+SELECT 'Jaimes 2' WHERE NOT EXISTS (SELECT 1 FROM estaciones WHERE nombre = 'Jaimes 2');
+
+-- Perfiles (emails deben coincidir con Supabase Auth)
+INSERT INTO perfiles_usuario (email, rol, estacion_id)
+SELECT 'operador.lasdelicias@zodi46-yaracuy.com', 'operador', id
+FROM estaciones WHERE nombre = 'Las Delicias'
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO perfiles_usuario (email, rol, estacion_id)
+SELECT 'operador.jaimes2@zodi46-yaracuy.com', 'operador', id
+FROM estaciones WHERE nombre = 'Jaimes 2'
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO perfiles_usuario (email, rol, estacion_id)
+VALUES ('admin@zodi46-yaracuy.com', 'admin', NULL)
+ON CONFLICT (email) DO NOTHING;
+
+-- Productos
 INSERT INTO productos (nombre, unidad)
 SELECT 'Gasolina', 'litros' WHERE NOT EXISTS (SELECT 1 FROM productos);
 INSERT INTO productos (nombre, unidad)
 SELECT 'Gasoil', 'litros' WHERE NOT EXISTS (SELECT 1 FROM productos WHERE nombre = 'Gasoil');
 
-INSERT INTO instituciones (nombre, tipo, fecha_registro)
-SELECT 'Policía Nacional', 'Gobierno', TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM instituciones);
+-- Instituciones demo Las Delicias
+INSERT INTO instituciones (estacion_id, nombre, tipo, fecha_registro)
+SELECT e.id, 'Policía Nacional', 'Gobierno', TO_CHAR(NOW(), 'YYYY-MM-DD')
+FROM estaciones e WHERE e.nombre = 'Las Delicias'
+AND NOT EXISTS (SELECT 1 FROM instituciones i WHERE i.estacion_id = e.id);
 
-INSERT INTO instituciones (nombre, tipo, fecha_registro)
-SELECT 'Hospital Central', 'Salud', TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM instituciones WHERE nombre = 'Hospital Central');
-
-INSERT INTO instituciones (nombre, tipo, fecha_registro)
-SELECT 'Alcaldía Municipal', 'Gobierno', TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM instituciones WHERE nombre = 'Alcaldía Municipal');
-
-INSERT INTO personas (nombre_completo, documento_identidad, telefono, institucion_id, fecha_registro)
-SELECT 'Juan Pérez', '001-1234567', '555-0101', 1, TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM personas);
-
-INSERT INTO personas (nombre_completo, documento_identidad, telefono, institucion_id, fecha_registro)
-SELECT 'Ana Gómez', '001-7654321', '555-0102', 2, TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM personas WHERE documento_identidad = '001-7654321');
-
-INSERT INTO personas (nombre_completo, documento_identidad, telefono, institucion_id, fecha_registro)
-SELECT 'Luis Ríos', '001-9988776', '555-0103', 3, TO_CHAR(NOW(), 'YYYY-MM-DD')
-WHERE NOT EXISTS (SELECT 1 FROM personas WHERE documento_identidad = '001-9988776');
+-- Instituciones demo Jaimes 2
+INSERT INTO instituciones (estacion_id, nombre, tipo, fecha_registro)
+SELECT e.id, 'Bomberos', 'Emergencias', TO_CHAR(NOW(), 'YYYY-MM-DD')
+FROM estaciones e WHERE e.nombre = 'Jaimes 2'
+AND NOT EXISTS (SELECT 1 FROM instituciones i WHERE i.estacion_id = e.id AND i.nombre = 'Bomberos');

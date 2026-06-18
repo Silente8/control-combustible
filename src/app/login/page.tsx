@@ -1,16 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { Fuel } from "lucide-react";
+import { AppBrand } from "@/components/AppBrand";
+import { ZODI_ORGANIZATION } from "@/lib/branding";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const paramError = searchParams.get("error");
+  const errorMsg =
+    paramError === "sin-perfil"
+      ? "Usuario no configurado. Contacte al administrador."
+      : paramError === "sin-estacion"
+        ? "Operador sin estación asignada."
+        : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -30,29 +40,24 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/");
+    router.push("/auth/entry");
     router.refresh();
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-blue-50 to-slate-100 p-4">
       <div className="w-full max-w-md">
-        <div className="mb-8 text-center">
-          <div className="mb-4 flex justify-center">
-            <Fuel className="h-12 w-12 text-blue-600" />
+        <AppBrand variant="login" />
+
+        <form onSubmit={handleSubmit} className="card mt-8 space-y-5 shadow-md">
+          <div className="text-center">
+            <h2 className="text-lg font-semibold text-slate-900">Iniciar sesión</h2>
+            <p className="mt-1 text-xs text-slate-500">{ZODI_ORGANIZATION}</p>
           </div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Control Combustible ZODI YARACUY
-          </h1>
-          <p className="mt-1 text-sm text-slate-500">Estación Las Delicias</p>
-        </div>
 
-        <form onSubmit={handleSubmit} className="card space-y-4">
-          <h2 className="text-lg font-semibold text-slate-900">Iniciar sesión</h2>
-
-          {error && (
-            <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-              {error}
+          {(error || errorMsg) && (
+            <div className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error || errorMsg}
             </div>
           )}
 
@@ -64,10 +69,11 @@ export default function LoginPage() {
               id="email"
               type="email"
               required
+              autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="input"
-              placeholder="operador@estacion.com"
+              className="input py-3 text-base"
+              placeholder="operador@zodi46-yaracuy.com"
             />
           </div>
 
@@ -79,17 +85,30 @@ export default function LoginPage() {
               id="password"
               type="password"
               required
+              autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="input"
+              className="input py-3 text-base"
             />
           </div>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full py-2.5">
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary w-full py-3.5 text-base font-semibold"
+          >
             {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }
