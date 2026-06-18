@@ -6,9 +6,10 @@ import { LogOut } from "lucide-react";
 
 interface UserFooterProps {
   email: string;
+  compact?: boolean;
 }
 
-export function UserFooter({ email }: UserFooterProps) {
+export function UserFooter({ email, compact = false }: UserFooterProps) {
   const router = useRouter();
   const label = email.split("@")[0];
 
@@ -17,6 +18,18 @@ export function UserFooter({ email }: UserFooterProps) {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  }
+
+  if (compact) {
+    return (
+      <button
+        onClick={handleLogout}
+        title={`Cerrar sesión (${label})`}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white hover:bg-blue-700"
+      >
+        {label.charAt(0).toUpperCase()}
+      </button>
+    );
   }
 
   return (

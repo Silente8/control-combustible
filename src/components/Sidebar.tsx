@@ -2,34 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Building2,
-  Users,
-  History,
-  BarChart3,
-  Fuel,
-} from "lucide-react";
+import { Fuel } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { navItems } from "@/lib/nav-items";
 import { UserFooter } from "@/components/UserFooter";
-
-const navItems = [
-  { href: "/", label: "Panel de Control", icon: LayoutDashboard },
-  { href: "/entradas", label: "Entradas", icon: ArrowDownToLine },
-  { href: "/despachos", label: "Despachos", icon: ArrowUpFromLine },
-  { href: "/instituciones", label: "Instituciones", icon: Building2 },
-  { href: "/personas", label: "Personas", icon: Users },
-  { href: "/historial", label: "Historial", icon: History },
-  { href: "/reportes", label: "Reportes", icon: BarChart3 },
-];
 
 export function Sidebar({ userEmail }: { userEmail: string }) {
   const pathname = usePathname();
 
   return (
-    <aside className="flex w-64 flex-col border-r border-slate-200 bg-white">
+    <aside className="hidden w-64 shrink-0 flex-col border-r border-slate-200 bg-white lg:flex">
       <div className="flex items-center gap-2 border-b border-slate-200 px-6 py-5">
         <Fuel className="h-7 w-7 shrink-0 text-blue-600" />
         <div>
@@ -55,7 +37,7 @@ export function Sidebar({ userEmail }: { userEmail: string }) {
               )}
             >
               <Icon className="h-5 w-5" />
-              {label}
+              {label === "Panel" ? "Panel de Control" : label}
             </Link>
           );
         })}

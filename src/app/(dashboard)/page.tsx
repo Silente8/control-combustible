@@ -18,7 +18,7 @@ export default async function DashboardPage() {
         description="Resumen de combustible — mes actual"
       />
 
-      <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-8 grid grid-cols-2 gap-3 landscape:grid-cols-4 lg:grid-cols-4 lg:gap-4">
         <StatCard
           title="Gasolina disponible"
           value={gasolina?.disponible ?? 0}
@@ -52,7 +52,7 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 landscape:grid-cols-2 lg:grid-cols-2 lg:gap-6">
         <div className="card">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">
             Top Instituciones (mes)
