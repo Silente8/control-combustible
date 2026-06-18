@@ -38,9 +38,10 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && isLoginPage) {
+  if (user && isLoginPage && !request.nextUrl.searchParams.get("error")) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/entry";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

@@ -13,14 +13,17 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const paramError = searchParams.get("error");
   const errorMsg =
     paramError === "sin-perfil"
-      ? "Usuario no configurado. Contacte al administrador."
+      ? "Usuario no configurado en la base de datos. Verifique el correo o contacte al administrador."
       : paramError === "sin-estacion"
-        ? "Operador sin estación asignada."
-        : null;
+        ? "Operador sin estación asignada. Contacte al administrador."
+        : paramError === "db-error"
+          ? "No se pudo conectar a la base de datos. Intente de nuevo en unos minutos."
+          : null;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -36,11 +39,24 @@ function LoginForm() {
     setLoading(false);
 
     if (authError) {
-      setError("Correo o contraseña incorrectos");
+      setError(
+        authError.message.includes("Invalid login")
+          ? "Correo o contraseña incorrectos"
+          : "Error al iniciar sesión. Intente de nuevo."
+      );
       return;
     }
 
     router.push("/auth/entry");
+    router.refresh();
+  }
+
+  async function handleClearSession() {
+    setClearing(true);
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    setClearing(false);
+    router.replace("/login");
     router.refresh();
   }
 
@@ -99,6 +115,17 @@ function LoginForm() {
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
+
+          {paramError && (
+            <button
+              type="button"
+              onClick={handleClearSession}
+              disabled={clearing}
+              className="btn-secondary w-full py-2.5 text-sm"
+            >
+              {clearing ? "Limpiando..." : "Limpiar sesión e intentar de nuevo"}
+            </button>
+          )}
         </form>
       </div>
     </div>
