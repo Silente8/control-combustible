@@ -50,6 +50,7 @@ export default async function AdminDashboardPage() {
           return (
             <EstacionSummaryCard
               key={item.estacion.id}
+              estacionId={item.estacion.id}
               nombre={item.estacion.nombre}
               totalEntradas={item.totalEntradas}
               totalDespachos={item.totalDespachos}

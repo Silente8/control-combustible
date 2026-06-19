@@ -34,6 +34,12 @@ export async function getEstaciones() {
   return db.select().from(estaciones).where(eq(estaciones.activa, 1));
 }
 
+export async function getProductosList() {
+  await requireAdmin();
+  const db = await getDb();
+  return db.select().from(productos);
+}
+
 export async function getAdminDashboardStats(periodo: Periodo = "mes") {
   await requireAdmin();
   const db = await getDb();
@@ -220,4 +226,72 @@ export async function getAdminTopConsumo(periodo: Periodo = "mes") {
     .limit(10);
 
   return topInstituciones.map((r) => ({ ...r, total: Number(r.total) }));
+}
+
+export type AdminDespachoDetalle = {
+  id: number;
+  fechaHora: string;
+  estacion: string;
+  producto: string;
+  litros: number;
+  tipoBeneficiario: string;
+  beneficiario: string;
+  operador: string;
+  observaciones: string;
+};
+
+export async function getAdminDespachosDetalle(filtros?: {
+  estacionId?: number;
+  desde?: string;
+  hasta?: string;
+  productoId?: number;
+  tipoBeneficiario?: "persona" | "institucion";
+}): Promise<AdminDespachoDetalle[]> {
+  await requireAdmin();
+  const db = await getDb();
+
+  const condiciones = [];
+  if (filtros?.estacionId) condiciones.push(eq(despachos.estacionId, filtros.estacionId));
+  if (filtros?.desde) condiciones.push(gte(despachos.fechaHora, filtros.desde));
+  if (filtros?.hasta)
+    condiciones.push(lte(despachos.fechaHora, `${filtros.hasta}T23:59:59`));
+  if (filtros?.productoId) condiciones.push(eq(despachos.productoId, filtros.productoId));
+  if (filtros?.tipoBeneficiario)
+    condiciones.push(eq(despachos.tipoBeneficiario, filtros.tipoBeneficiario));
+
+  const rows = await db
+    .select({
+      id: despachos.id,
+      fechaHora: despachos.fechaHora,
+      litros: despachos.litros,
+      tipoBeneficiario: despachos.tipoBeneficiario,
+      operador: despachos.usuarioRegistro,
+      observaciones: despachos.observaciones,
+      producto: productos.nombre,
+      estacion: estaciones.nombre,
+      personaNombre: personas.nombreCompleto,
+      institucionNombre: instituciones.nombre,
+    })
+    .from(despachos)
+    .innerJoin(productos, eq(despachos.productoId, productos.id))
+    .innerJoin(estaciones, eq(despachos.estacionId, estaciones.id))
+    .leftJoin(personas, eq(despachos.personaId, personas.id))
+    .leftJoin(instituciones, eq(despachos.institucionId, instituciones.id))
+    .where(condiciones.length > 0 ? and(...condiciones) : undefined)
+    .orderBy(desc(despachos.fechaHora));
+
+  return rows.map((row) => ({
+    id: row.id,
+    fechaHora: row.fechaHora,
+    estacion: row.estacion,
+    producto: row.producto,
+    litros: row.litros,
+    tipoBeneficiario: row.tipoBeneficiario === "persona" ? "Persona" : "Institución",
+    beneficiario:
+      row.tipoBeneficiario === "persona"
+        ? row.personaNombre ?? "-"
+        : row.institucionNombre ?? "-",
+    operador: row.operador,
+    observaciones: row.observaciones ?? "",
+  }));
 }

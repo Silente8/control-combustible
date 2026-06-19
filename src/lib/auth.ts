@@ -1,6 +1,6 @@
 import { getDb } from "@/db";
 import { estaciones, perfilesUsuario } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
@@ -27,7 +27,7 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     })
     .from(perfilesUsuario)
     .leftJoin(estaciones, eq(perfilesUsuario.estacionId, estaciones.id))
-    .where(eq(perfilesUsuario.email, user.email))
+    .where(sql`lower(${perfilesUsuario.email}) = lower(${user.email})`)
     .limit(1);
 
   if (!row) return null;
